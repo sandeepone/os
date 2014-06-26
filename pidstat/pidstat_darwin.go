@@ -4,8 +4,8 @@ package pidstat
 
 import (
 	"fmt"
-	"github.com/square/prodeng/inspect/misc"
-	"github.com/square/prodeng/metrics"
+	"github.com/measure/os/misc"
+	"github.com/measure/metrics"
 	"os/user"
 	"reflect"
 	"time"

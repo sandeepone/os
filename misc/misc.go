@@ -6,7 +6,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"github.com/square/prodeng/metrics"
+	"github.com/measure/metrics"
 	"io/ioutil"
 	"os"
 	"path/filepath"

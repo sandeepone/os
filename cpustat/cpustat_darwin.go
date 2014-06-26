@@ -3,8 +3,8 @@ package cpustat
 import "unsafe"
 import "time"
 import "math"
-import "github.com/square/prodeng/metrics"
-import "github.com/square/prodeng/inspect/misc"
+import "github.com/measure/metrics"
+import "github.com/measure/os/misc"
 
 // TODO: Per CPU stats - are they available?
 

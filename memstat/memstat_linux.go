@@ -4,8 +4,8 @@ package memstat
 
 import (
 	"bufio"
-	"github.com/square/prodeng/inspect/misc"
-	"github.com/square/prodeng/metrics"
+	"github.com/measure/os/misc"
+	"github.com/measure/metrics"
 	"math"
 	"os"
 	"reflect"

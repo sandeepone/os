@@ -5,8 +5,8 @@ package memstat
 import (
 	"bufio"
 	"fmt"
-	"github.com/square/prodeng/inspect/misc"
-	"github.com/square/prodeng/metrics"
+	"github.com/measure/os/misc"
+	"github.com/measure/metrics"
 	"math"
 	"os"
 	"path/filepath"
