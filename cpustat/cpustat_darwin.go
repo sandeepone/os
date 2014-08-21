@@ -17,12 +17,15 @@ import "github.com/measure/os/misc"
 */
 import "C"
 
+// CPUStat encapsulates cpu performance information per cpu
 type CPUStat struct {
-	All *CPUStatPerCPU
+	All *PerCPU
 	m   *metrics.MetricContext
 }
 
-type CPUStatPerCPU struct {
+// PerCPU encapsulates cpu performance for a particular
+// CPU
+type PerCPU struct {
 	User        *metrics.Counter
 	UserLowPrio *metrics.Counter
 	System      *metrics.Counter
@@ -30,9 +33,13 @@ type CPUStatPerCPU struct {
 	Total       *metrics.Counter // total ticks
 }
 
+// New returns an instance of CPUStat and starts collecting
+// metrics at specified step
+// TODO: add an argument or step of -1 should override automatic
+// collection
 func New(m *metrics.MetricContext, Step time.Duration) *CPUStat {
 	c := new(CPUStat)
-	c.All = CPUStatPerCPUNew(m, "cpu")
+	c.All = PerCPUNew(m, "cpu")
 	c.m = m
 	ticker := time.NewTicker(Step)
 	go func() {
@@ -43,6 +50,7 @@ func New(m *metrics.MetricContext, Step time.Duration) *CPUStat {
 	return c
 }
 
+// Collect starts collecting metris - usually called from New
 func (s *CPUStat) Collect() {
 
 	// collect CPU stats for All cpus aggregated
@@ -70,26 +78,26 @@ func (s *CPUStat) Collect() {
 }
 
 // Usage returns current total CPU usage in percentage across all CPUs
-func (o *CPUStat) Usage() float64 {
-	return o.All.Usage()
+func (s *CPUStat) Usage() float64 {
+	return s.All.Usage()
 }
 
 // UserSpace returns time spent in userspace as percentage across all
 // CPUs
-func (o *CPUStat) UserSpace() float64 {
-	return o.All.UserSpace()
+func (s *CPUStat) UserSpace() float64 {
+	return s.All.UserSpace()
 }
 
 // Kernel returns time spent in userspace as percentage across all
 // CPUs
-func (o *CPUStat) Kernel() float64 {
-	return o.All.Kernel()
+func (s *CPUStat) Kernel() float64 {
+	return s.All.Kernel()
 }
 
-// CPUStatPerCPUNew returns a struct representing counters for
+// PerCPUNew returns a struct representing counters for
 // per CPU statistics
-func CPUStatPerCPUNew(m *metrics.MetricContext, cpu string) *CPUStatPerCPU {
-	o := new(CPUStatPerCPU)
+func PerCPUNew(m *metrics.MetricContext, cpu string) *PerCPU {
+	o := new(PerCPU)
 	// initialize metrics and register
 	// XXX: need to adopt it to similar to linux and pass
 	// cpu name as argument when we are collecting per cpu
@@ -99,7 +107,7 @@ func CPUStatPerCPUNew(m *metrics.MetricContext, cpu string) *CPUStatPerCPU {
 }
 
 // Usage returns total percentage of CPU used
-func (o *CPUStatPerCPU) Usage() float64 {
+func (o *PerCPU) Usage() float64 {
 	u := o.User.ComputeRate()
 	n := o.UserLowPrio.ComputeRate()
 	s := o.System.ComputeRate()
@@ -107,14 +115,13 @@ func (o *CPUStatPerCPU) Usage() float64 {
 
 	if u != math.NaN() && s != math.NaN() && t != math.NaN() && t > 0 {
 		return (u + s + n) / t * 100
-	} else {
-		return math.NaN()
 	}
+	return math.NaN()
 }
 
 // UserSpace returns percentage of time spent in userspace
 // on this CPU
-func (o *CPUStatPerCPU) UserSpace() float64 {
+func (o *PerCPU) UserSpace() float64 {
 	u := o.User.ComputeRate()
 	n := o.UserLowPrio.ComputeRate()
 	t := o.Total.ComputeRate()
@@ -126,7 +133,7 @@ func (o *CPUStatPerCPU) UserSpace() float64 {
 
 // Kernel returns percentage of time spent in kernel
 // on this CPU
-func (o *CPUStatPerCPU) Kernel() float64 {
+func (o *PerCPU) Kernel() float64 {
 	s := o.System.ComputeRate()
 	t := o.Total.ComputeRate()
 	if s != math.NaN() && t != math.NaN() && t > 0 {

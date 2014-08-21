@@ -1,23 +1,28 @@
 // Copyright (c) 2014 Square, Inc
 
-// file system disk statistics
+/*
+Package fsstat collects various file system disk statistics
+*/
 package fsstat
 
 import (
 	"bufio"
-	"github.com/measure/os/misc"
 	"github.com/measure/metrics"
+	"github.com/measure/os/misc"
 	"os"
 	"strings"
 	"syscall"
 	"time"
 )
 
+// FSStat encapsulates per file system stats
 type FSStat struct {
 	FS map[string]*PerFSStat
 	m  *metrics.MetricContext
 }
 
+// New returns an instance of FSStat and starts
+// metric collection process as dictated by step argument
 func New(m *metrics.MetricContext, Step time.Duration) *FSStat {
 	s := new(FSStat)
 	s.FS = make(map[string]*PerFSStat, 0)
@@ -33,6 +38,10 @@ func New(m *metrics.MetricContext, Step time.Duration) *FSStat {
 	return s
 }
 
+// Collect scans for filesystems listed in mtab and collects
+// relevant metrics
+// Collect skips proc,sysfs,devpts,none,sunrpc device types
+// and few other types of mounts (bind,swap,ignore,none)
 func (s *FSStat) Collect() {
 	file, err := os.Open("/etc/mtab")
 	defer file.Close()
@@ -67,14 +76,15 @@ func (s *FSStat) Collect() {
 	}
 }
 
+// PerFSStat encapsulates metrics instance for each FS
 type PerFSStat struct {
-	Metrics *PerFSStatMetrics
+	Metrics *perFSStatMetrics
 	m       *metrics.MetricContext
 	mp      string
 }
 
 // man statfs
-type PerFSStatMetrics struct {
+type perFSStatMetrics struct {
 	Bsize  *metrics.Gauge
 	Blocks *metrics.Gauge
 	Bfree  *metrics.Gauge
@@ -83,14 +93,17 @@ type PerFSStatMetrics struct {
 	Ffree  *metrics.Gauge
 }
 
+// NewPerFSStat returns an instance of FSStat and registers
+// with metric context
 func NewPerFSStat(m *metrics.MetricContext, mp string) *PerFSStat {
 	c := new(PerFSStat)
 	c.mp = mp
-	c.Metrics = new(PerFSStatMetrics)
+	c.Metrics = new(perFSStatMetrics)
 	misc.InitializeMetrics(c.Metrics, m, "fsstat."+mp, true)
 	return c
 }
 
+// Collect invokes statfs system call to populate metrics
 func (s *PerFSStat) Collect() {
 
 	// call statfs and populate metrics
@@ -108,7 +121,7 @@ func (s *PerFSStat) Collect() {
 	s.Metrics.Ffree.Set(float64(buf.Ffree))
 }
 
-// Filesystem block usage in percentage
+// Usage returns filesystem block usage in percentage
 func (s *PerFSStat) Usage() float64 {
 	o := s.Metrics
 	total := o.Blocks.Get()
@@ -116,7 +129,7 @@ func (s *PerFSStat) Usage() float64 {
 	return ((total - free) / total) * 100
 }
 
-// Filesystem file node usage
+// FileUsage returns filesystem file node usage
 func (s *PerFSStat) FileUsage() float64 {
 	o := s.Metrics
 	total := o.Files.Get()

@@ -2,22 +2,30 @@
 
 package cpustat
 
+/*
+Package cpustat implements collection of cpu performance
+metrics
+*/
+
 import (
 	"bufio"
-	"github.com/measure/os/misc"
 	"github.com/measure/metrics"
+	"github.com/measure/os/misc"
 	"os"
 	"path/filepath"
 	"regexp"
 	"time"
 )
 
+// CgroupStat encapsulates cpu information about various
+// cgroups and provides functions to collect
 type CgroupStat struct {
 	Cgroups    map[string]*PerCgroupStat
 	m          *metrics.MetricContext
 	Mountpoint string
 }
 
+// NewCgroupStat returns an instance of CgroupStat
 func NewCgroupStat(m *metrics.MetricContext, Step time.Duration) *CgroupStat {
 	c := new(CgroupStat)
 	c.m = m
@@ -40,6 +48,7 @@ func NewCgroupStat(m *metrics.MetricContext, Step time.Duration) *CgroupStat {
 	return c
 }
 
+// Collect starts collecting metrics
 func (c *CgroupStat) Collect(mountpoint string) {
 
 	cgroups, err := misc.FindCgroups(mountpoint)
@@ -54,7 +63,7 @@ func (c *CgroupStat) Collect(mountpoint string) {
 		cgroupsMap[cgroup] = true
 	}
 
-	for cgroup, _ := range c.Cgroups {
+	for cgroup := range c.Cgroups {
 		_, ok := cgroupsMap[cgroup]
 		if !ok {
 			delete(c.Cgroups, cgroup)
@@ -70,13 +79,14 @@ func (c *CgroupStat) Collect(mountpoint string) {
 	}
 }
 
-// Per Cgroup functions
-
+// PerCgroupStat encapsulates cpu information about a single
+// cgroup
 type PerCgroupStat struct {
 	Metrics *PerCgroupStatMetrics
 	m       *metrics.MetricContext
 }
 
+// NewPerCgroupStat returns an instance of PerCgroupStat
 func NewPerCgroupStat(m *metrics.MetricContext, path string, mp string) *PerCgroupStat {
 	c := new(PerCgroupStat)
 	c.m = m
@@ -90,30 +100,32 @@ func NewPerCgroupStat(m *metrics.MetricContext, path string, mp string) *PerCgro
 // the cgroup couldn't get enough cpu
 // rate ((nr_throttled * period) / quota)
 // XXX: add support for real-time scheduler stats
-
 func (s *PerCgroupStat) Throttle() float64 {
 	o := s.Metrics
-	throttled_sec := o.Throttled_time.ComputeRate()
+	throttledSec := o.ThrottledTime.ComputeRate()
 
-	return (throttled_sec / (1 * 1000 * 1000 * 1000)) * 100
+	return (throttledSec / (1 * 1000 * 1000 * 1000)) * 100
 }
 
 // Quota returns how many logical CPUs can be used
-
 func (s *PerCgroupStat) Quota() float64 {
 	o := s.Metrics
-	return (o.Cfs_quota_us.Get() / o.Cfs_period_us.Get())
+	return (o.CfsQuotaUs.Get() / o.CfsPeriodUs.Get())
 }
 
+// PerCgroupStatMetrics encapsulates cgroup cpu metrics
+// per cgroup
 type PerCgroupStatMetrics struct {
-	Nr_periods     *metrics.Counter
-	Nr_throttled   *metrics.Counter
-	Throttled_time *metrics.Counter
-	Cfs_period_us  *metrics.Gauge
-	Cfs_quota_us   *metrics.Gauge
-	path           string
+	NrPeriods     *metrics.Counter
+	NrThrottled   *metrics.Counter
+	ThrottledTime *metrics.Counter
+	CfsPeriodUs   *metrics.Gauge
+	CfsQuotaUs    *metrics.Gauge
+	path          string
 }
 
+// NewPerCgroupStatMetrics returns an instance of per-cgroup
+// metrics
 func NewPerCgroupStatMetrics(m *metrics.MetricContext, path string, mp string) *PerCgroupStatMetrics {
 	c := new(PerCgroupStatMetrics)
 	c.path = path
@@ -125,6 +137,8 @@ func NewPerCgroupStatMetrics(m *metrics.MetricContext, path string, mp string) *
 	return c
 }
 
+// Collect scans cgroup mountpoint and populates cgroup
+// cpu metrics
 func (s *PerCgroupStatMetrics) Collect() {
 	file, err := os.Open(s.path + "/" + "cpu.stat")
 	if err != nil {
@@ -136,23 +150,23 @@ func (s *PerCgroupStatMetrics) Collect() {
 		f := regexp.MustCompile("\\s+").Split(scanner.Text(), 2)
 
 		if f[0] == "nr_periods" {
-			s.Nr_periods.Set(misc.ParseUint(f[1]))
+			s.NrPeriods.Set(misc.ParseUint(f[1]))
 		}
 
 		if f[0] == "nr_throttled" {
-			s.Nr_throttled.Set(misc.ParseUint(f[1]))
+			s.NrThrottled.Set(misc.ParseUint(f[1]))
 		}
 
 		if f[0] == "throttled_time" {
-			s.Throttled_time.Set(misc.ParseUint(f[1]))
+			s.ThrottledTime.Set(misc.ParseUint(f[1]))
 		}
 	}
 
-	s.Cfs_period_us.Set(
+	s.CfsPeriodUs.Set(
 		float64(misc.ReadUintFromFile(
 			s.path + "/" + "cpu.cfs_period_us")))
 
-	s.Cfs_quota_us.Set(
+	s.CfsQuotaUs.Set(
 		float64(misc.ReadUintFromFile(
 			s.path + "/" + "cpu.cfs_quota_us")))
 }
