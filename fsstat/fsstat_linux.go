@@ -40,6 +40,12 @@ func (s *FSStat) Collect() {
 		return
 	}
 
+	// mark all objects as non-mounted to weed out
+	// the ones that disappeared from last time we ran
+	for _, o := range s.FS {
+		o.IsMounted = false
+	}
+
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		f := strings.Split(scanner.Text(), " ")
@@ -63,7 +69,15 @@ func (s *FSStat) Collect() {
 			o = NewPerFSStat(s.m, f[1])
 			s.FS[f[1]] = o
 		}
+		o.IsMounted = true
 		o.Collect()
+	}
+
+	// remove entries for mounts that no longer exist
+	for name, o := range s.FS {
+		if ! os.IsMounted {
+			delete s.FS[name]
+		}
 	}
 }
 
@@ -71,6 +85,7 @@ type PerFSStat struct {
 	Metrics *PerFSStatMetrics
 	m       *metrics.MetricContext
 	mp      string
+	IsMounted bool
 }
 
 // man statfs
