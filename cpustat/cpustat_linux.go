@@ -4,23 +4,27 @@ package cpustat
 
 import (
 	"bufio"
-	"github.com/measure/os/misc"
-	"github.com/measure/metrics"
 	"math"
 	"os"
 	"regexp"
 	"time"
+
+	"github.com/measure/metrics"
+	"github.com/measure/os/misc"
 )
 
+// CPUStat encapsulates metric information about all CPUs
 type CPUStat struct {
-	All           *CPUStatPerCPU
-	Procs_running *metrics.Counter
-	Procs_blocked *metrics.Counter
-	cpus          map[string]*CPUStatPerCPU
-	m             *metrics.MetricContext
+	All          *PerCPU
+	ProcsRunning *metrics.Counter
+	ProcsBlocked *metrics.Counter
+	cpus         map[string]*PerCPU
+	m            *metrics.MetricContext
 }
 
-type CPUStatPerCPU struct {
+// PerCPU encapsulates metrics about individual CPU performance
+// and also provides few summary statistics
+type PerCPU struct {
 	User        *metrics.Counter
 	UserLowPrio *metrics.Counter
 	System      *metrics.Counter
@@ -31,13 +35,18 @@ type CPUStatPerCPU struct {
 	Steal       *metrics.Counter
 	Guest       *metrics.Counter
 	Total       *metrics.Counter // total jiffies
+	// Computed stats
+	UserSpacePct *metrics.Gauge
+	KernelPct    *metrics.Gauge
+	UsagePct     *metrics.Gauge
 }
 
+// New returns an instance of CPUStat
 func New(m *metrics.MetricContext, Step time.Duration) *CPUStat {
 	c := new(CPUStat)
-	c.All = NewCPUStatPerCPU(m, "cpu")
+	c.All = NewPerCPU(m, "cpu")
 	c.m = m
-	c.cpus = make(map[string]*CPUStatPerCPU, 1)
+	c.cpus = make(map[string]*PerCPU, 1)
 	ticker := time.NewTicker(Step)
 	go func() {
 		for _ = range ticker.C {
@@ -47,9 +56,13 @@ func New(m *metrics.MetricContext, Step time.Duration) *CPUStat {
 	return c
 }
 
+// Collect captures metrics for all cpus and also publishes few summary
+// statistics
 // XXX: break this up into two smaller functions
 func (s *CPUStat) Collect() {
 	file, err := os.Open("/proc/stat")
+	defer file.Close()
+
 	if err != nil {
 		return
 	}
@@ -57,43 +70,45 @@ func (s *CPUStat) Collect() {
 	for scanner.Scan() {
 		f := regexp.MustCompile("\\s+").Split(scanner.Text(), -1)
 
-		is_cpu, err := regexp.MatchString("^cpu\\d*", f[0])
-		if err == nil && is_cpu {
+		isCPU, err := regexp.MatchString("^cpu\\d*", f[0])
+		if err == nil && isCPU {
 			if f[0] == "cpu" {
 				parseCPUline(s.All, f)
+				populateComputedStats(s.All)
 			} else {
-				per_cpu, ok := s.cpus[f[0]]
+				perCPU, ok := s.cpus[f[0]]
 				if !ok {
-					per_cpu = NewCPUStatPerCPU(s.m, f[0])
-					s.cpus[f[0]] = per_cpu
+					perCPU = NewPerCPU(s.m, f[0])
+					s.cpus[f[0]] = perCPU
 				}
-				parseCPUline(per_cpu, f)
+				parseCPUline(perCPU, f)
+				populateComputedStats(perCPU)
 			}
 		}
 	}
 }
 
 // Usage returns current total CPU usage in percentage across all CPUs
-func (o *CPUStat) Usage() float64 {
-	return o.All.Usage()
+func (s *CPUStat) Usage() float64 {
+	return s.All.Usage()
 }
 
 // UserSpace returns time spent in userspace as percentage across all
 // CPUs
-func (o *CPUStat) UserSpace() float64 {
-	return o.All.UserSpace()
+func (s *CPUStat) UserSpace() float64 {
+	return s.All.UserSpace()
 }
 
 // Kernel returns time spent in userspace as percentage across all
 // CPUs
-func (o *CPUStat) Kernel() float64 {
-	return o.All.Kernel()
+func (s *CPUStat) Kernel() float64 {
+	return s.All.Kernel()
 }
 
 // CPUS returns all CPUS found as a slice of strings
-func (o *CPUStat) CPUS() []string {
+func (s *CPUStat) CPUS() []string {
 	ret := make([]string, 1)
-	for k, _ := range o.cpus {
+	for k := range o.cpus {
 		ret = append(ret, k)
 	}
 
@@ -101,14 +116,14 @@ func (o *CPUStat) CPUS() []string {
 }
 
 // PerCPUStat returns per-CPU stats for argument "cpu"
-func (o *CPUStat) PerCPUStat(cpu string) *CPUStatPerCPU {
-	return o.cpus[cpu]
+func (s *CPUStat) PerCPUStat(cpu string) *PerCPU {
+	return s.cpus[cpu]
 }
 
-// NewCPUStatPerCPU returns a struct representing counters for
+// NewPerCPU returns a struct representing counters for
 // per CPU statistics
-func NewCPUStatPerCPU(m *metrics.MetricContext, name string) *CPUStatPerCPU {
-	o := new(CPUStatPerCPU)
+func NewPerCPU(m *metrics.MetricContext, name string) *PerCPU {
+	o := new(PerCPU)
 
 	// initialize all metrics and register them
 	misc.InitializeMetrics(o, m, "cpustat."+name, true)
@@ -116,7 +131,7 @@ func NewCPUStatPerCPU(m *metrics.MetricContext, name string) *CPUStatPerCPU {
 }
 
 // Usage returns total percentage of CPU used
-func (o *CPUStatPerCPU) Usage() float64 {
+func (o *PerCPU) Usage() float64 {
 	u := o.User.ComputeRate()
 	n := o.UserLowPrio.ComputeRate()
 	s := o.System.ComputeRate()
@@ -125,14 +140,13 @@ func (o *CPUStatPerCPU) Usage() float64 {
 	if u != math.NaN() && n != math.NaN() && s != math.NaN() &&
 		t != math.NaN() && t > 0 {
 		return (u + s + n) / t * 100
-	} else {
-		return math.NaN()
 	}
+	return math.NaN()
 }
 
 // UserSpace returns percentage of time spent in userspace
 // on this CPU
-func (o *CPUStatPerCPU) UserSpace() float64 {
+func (o *PerCPU) UserSpace() float64 {
 	u := o.User.ComputeRate()
 	n := o.UserLowPrio.ComputeRate()
 	t := o.Total.ComputeRate()
@@ -144,7 +158,7 @@ func (o *CPUStatPerCPU) UserSpace() float64 {
 
 // Kernel returns percentage of time spent in kernel
 // on this CPU
-func (o *CPUStatPerCPU) Kernel() float64 {
+func (o *PerCPU) Kernel() float64 {
 	s := o.System.ComputeRate()
 	t := o.Total.ComputeRate()
 	if s != math.NaN() && t != math.NaN() && t > 0 {
@@ -154,7 +168,7 @@ func (o *CPUStatPerCPU) Kernel() float64 {
 }
 
 // Unexported functions
-func parseCPUline(s *CPUStatPerCPU, f []string) {
+func parseCPUline(s *PerCPU, f []string) {
 	s.User.Set(misc.ParseUint(f[1]))
 	s.UserLowPrio.Set(misc.ParseUint(f[2]))
 	s.System.Set(misc.ParseUint(f[3]))
@@ -165,4 +179,10 @@ func parseCPUline(s *CPUStatPerCPU, f []string) {
 	s.Steal.Set(misc.ParseUint(f[8]))
 	s.Guest.Set(misc.ParseUint(f[9]))
 	s.Total.Set(s.User.Get() + s.UserLowPrio.Get() + s.System.Get() + s.Idle.Get())
+}
+
+func populateComputedStats(s *PerCPU) {
+	s.UserSpacePct.Set(s.UserSpace())
+	s.KernelPct.Set(s.Kernel())
+	s.UsagePct.Set(s.Usage())
 }
