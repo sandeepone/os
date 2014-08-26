@@ -5,8 +5,6 @@ package memstat
 import (
 	"bufio"
 	"fmt"
-	"github.com/measure/os/misc"
-	"github.com/measure/metrics"
 	"math"
 	"os"
 	"path/filepath"
@@ -14,6 +12,9 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/measure/metrics"
+	"github.com/measure/os/misc"
 )
 
 type CgroupStat struct {
@@ -69,49 +70,14 @@ func (c *CgroupStat) Collect(mountpoint string) {
 		if !ok {
 			c.Cgroups[cgroup] = NewPerCgroupStat(c.m, cgroup, mountpoint)
 		}
-		c.Cgroups[cgroup].Metrics.Collect()
+		c.Cgroups[cgroup].Collect()
 	}
 
 }
 
 // Per Cgroup functions
-
 type PerCgroupStat struct {
-	Metrics *PerCgroupStatMetrics
-	m       *metrics.MetricContext
-}
-
-func NewPerCgroupStat(m *metrics.MetricContext, path string, mp string) *PerCgroupStat {
-	c := new(PerCgroupStat)
-	c.m = m
-
-	c.Metrics = NewPerCgroupStatMetrics(m, path, mp)
-
-	return c
-}
-
-// Free returns free physical memory including cache
-// Use soft_limit_in_bytes as upper bound or if not
-// set use system memory
-// NOT IMPLEMENTED YET
-// rename to Free() when done
-func (s *PerCgroupStat) free() float64 {
-	return 0
-}
-
-// Usage returns physical memory in use; not including buffers/cached/sreclaimable
-func (s *PerCgroupStat) Usage() float64 {
-	o := s.Metrics
-	return o.Rss.Get() + o.Mapped_file.Get()
-}
-
-// SoftLimit returns soft-limit for the cgroup
-func (s *PerCgroupStat) SoftLimit() float64 {
-	o := s.Metrics
-	return o.Soft_Limit_In_Bytes.Get()
-}
-
-type PerCgroupStatMetrics struct {
+	m *metrics.MetricContext
 	// memory.stat
 	Cache                     *metrics.Gauge
 	Rss                       *metrics.Gauge
@@ -139,23 +105,41 @@ type PerCgroupStatMetrics struct {
 	Total_unevictable         *metrics.Gauge
 	// memory.soft_limit_in_bytes
 	Soft_Limit_In_Bytes *metrics.Gauge
-	path                string
+	// Approximate usage in bytes
+	UsageInBytes *metrics.Gauge
+	path         string
 }
 
-func NewPerCgroupStatMetrics(m *metrics.MetricContext,
-	path string, mp string) *PerCgroupStatMetrics {
-
-	c := new(PerCgroupStatMetrics)
+func NewPerCgroupStat(m *metrics.MetricContext, path string, mp string) *PerCgroupStat {
+	c := new(PerCgroupStat)
+	c.m = m
 	c.path = path
-
 	prefix, _ := filepath.Rel(mp, path)
 	// initialize all metrics and register them
 	misc.InitializeMetrics(c, m, "memstat.cgroup."+prefix, true)
-
 	return c
 }
 
-func (s *PerCgroupStatMetrics) Collect() {
+// Free returns free physical memory including cache
+// Use soft_limit_in_bytes as upper bound or if not
+// set use system memory
+// NOT IMPLEMENTED YET
+// rename to Free() when done
+func (s *PerCgroupStat) free() float64 {
+	return 0
+}
+
+// Usage returns physical memory in use; not including buffers/cached/sreclaimable
+func (s *PerCgroupStat) Usage() float64 {
+	return s.Rss.Get() + s.Mapped_file.Get()
+}
+
+// SoftLimit returns soft-limit for the cgroup
+func (s *PerCgroupStat) SoftLimit() float64 {
+	return s.Soft_Limit_In_Bytes.Get()
+}
+
+func (s *PerCgroupStat) Collect() {
 	file, err := os.Open(s.path + "/" + "memory.stat")
 	if err != nil {
 		fmt.Println(err)
@@ -186,6 +170,8 @@ func (s *PerCgroupStatMetrics) Collect() {
 	s.Soft_Limit_In_Bytes.Set(
 		float64(misc.ReadUintFromFile(
 			s.path + "/" + "memory.soft_limit_in_bytes")))
+
+	s.UsageInBytes.Set(s.Usage())
 }
 
 // Unexported functions

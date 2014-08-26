@@ -36,7 +36,7 @@ type PerCPU struct {
 	Guest       *metrics.Counter
 	Total       *metrics.Counter // total jiffies
 	// Computed stats
-	UserSpacePct *metrics.Gauge
+	UserspacePct *metrics.Gauge
 	KernelPct    *metrics.Gauge
 	UsagePct     *metrics.Gauge
 }
@@ -108,7 +108,7 @@ func (s *CPUStat) Kernel() float64 {
 // CPUS returns all CPUS found as a slice of strings
 func (s *CPUStat) CPUS() []string {
 	ret := make([]string, 1)
-	for k := range o.cpus {
+	for k := range s.cpus {
 		ret = append(ret, k)
 	}
 
@@ -182,7 +182,7 @@ func parseCPUline(s *PerCPU, f []string) {
 }
 
 func populateComputedStats(s *PerCPU) {
-	s.UserSpacePct.Set(s.UserSpace())
+	s.UserspacePct.Set(s.UserSpace())
 	s.KernelPct.Set(s.Kernel())
 	s.UsagePct.Set(s.Usage())
 }
