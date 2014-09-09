@@ -178,11 +178,22 @@ func (s *PerCgroupStat) Collect() {
 		float64(misc.ReadUintFromFile(
 			s.path + "/" + "cpu.cfs_quota_us")))
 
-	// gather cpu times for procs in this cgroup
+	// Calculate approximate cumulative CPU usage for all
+	// processes within this cgroup by calculating difference
+	// between sum number of ticks.
+	// We reset between loops because PIDs within cgroup can
+	// change and sum-counter from previous value can be
+	// unreliable
 	s.getCgroupCPUTimes()
+	time.Sleep(time.Millisecond * 1000)
+	s.getCgroupCPUTimes()
+	// Expose summary metrics for easy json access
 	s.UsagePct.Set(s.Usage())
 	s.UserspacePct.Set(s.Userspace())
 	s.KernelPct.Set(s.Kernel())
+	// Reset counters
+	s.Utime.Set(0)
+	s.Stime.Set(0)
 }
 
 // unexported

@@ -5,8 +5,8 @@ package fsstat
 
 import (
 	"bufio"
-	"github.com/measure/os/misc"
 	"github.com/measure/metrics"
+	"github.com/measure/os/misc"
 	"os"
 	"strings"
 	"syscall"
@@ -75,16 +75,16 @@ func (s *FSStat) Collect() {
 
 	// remove entries for mounts that no longer exist
 	for name, o := range s.FS {
-		if ! os.IsMounted {
-			delete s.FS[name]
+		if !o.IsMounted {
+			delete(s.FS, name)
 		}
 	}
 }
 
 type PerFSStat struct {
-	Metrics *PerFSStatMetrics
-	m       *metrics.MetricContext
-	mp      string
+	Metrics   *PerFSStatMetrics
+	m         *metrics.MetricContext
+	mp        string
 	IsMounted bool
 }
 
