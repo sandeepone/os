@@ -140,7 +140,7 @@ func (s *PerCgroupStat) Userspace() float64 {
 // Kernel returns cumulative CPU spent by processes in this
 // cgroup in kernel as percentage
 func (s *PerCgroupStat) Kernel() float64 {
-	rate_per_sec := s.Utime.ComputeRate()
+	rate_per_sec := s.Stime.ComputeRate()
 	return (rate_per_sec * 100) / float64(LINUX_TICKS_IN_SEC)
 }
 
